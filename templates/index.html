@@ -15,6 +15,8 @@
             --text: #f1f5f9;
             --text-dim: #94a3b8;
             --accent: #f472b6;
+            --danger: #ef4444;
+            --success: #10b981;
         }
 
         body {
@@ -42,6 +44,7 @@
             font-size: 2.5rem;
             margin-bottom: 10px;
             background: linear-gradient(to right, var(--primary), var(--secondary));
+            background-clip: text;
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -91,7 +94,7 @@
             font-size: 1.1rem;
         }
 
-        button:hover {
+        button:hover:not(:disabled) {
             transform: translateY(-2px);
             opacity: 0.9;
         }
@@ -100,6 +103,11 @@
             background: #475569;
             cursor: not-allowed;
             transform: none;
+            opacity: 0.5;
+        }
+
+        .btn-stop {
+            background: var(--danger);
         }
 
         .project-list {
@@ -115,6 +123,12 @@
             display: flex;
             flex-direction: column;
             gap: 10px;
+            transition: border-color 0.3s;
+        }
+
+        .project-card.active {
+            border-color: var(--primary);
+            background: rgba(56, 189, 248, 0.05);
         }
 
         .progress-bar {
@@ -138,11 +152,12 @@
         }
 
         .badge {
-            padding: 4px 8px;
+            padding: 4px 10px;
             border-radius: 6px;
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             font-weight: 700;
             text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
         .badge-pending {
@@ -151,10 +166,29 @@
 
         .badge-processing {
             background: var(--primary);
+            animation: pulse 2s infinite;
         }
 
         .badge-finished {
-            background: #10b981;
+            background: var(--success);
+        }
+
+        .badge-paused {
+            background: #f59e0b;
+        }
+
+        @keyframes pulse {
+            0% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.6;
+            }
+
+            100% {
+                opacity: 1;
+            }
         }
 
         .btn-small {
@@ -167,6 +201,8 @@
             color: var(--primary);
             text-decoration: none;
             font-weight: 600;
+            display: inline-block;
+            margin-top: 5px;
         }
     </style>
 </head>
@@ -212,75 +248,131 @@
         const createBtn = document.getElementById('createBtn');
         const projectList = document.getElementById('projectList');
 
+        let activeProjectId = null; // ID del proyecto que se está procesando actualmente
+
         speedInput.oninput = () => speedValue.textContent = speedInput.value;
 
         // Cargar voces
         async function loadVoices() {
-            const res = await fetch('/api/voices');
-            const voices = await res.json();
-            voices.forEach(v => {
-                const opt = document.createElement('option');
-                opt.value = v.id;
-                opt.textContent = `${v.group} - ${v.label}`;
-                if (v.id === 'es_esteban') opt.selected = true;
-                voiceSelect.appendChild(opt);
-            });
+            try {
+                const res = await fetch('/api/voices');
+                const voices = await res.json();
+                voiceSelect.innerHTML = '';
+                voices.forEach(v => {
+                    const opt = document.createElement('option');
+                    opt.value = v.id;
+                    opt.textContent = `${v.group} - ${v.label}`;
+                    if (v.id === 'es_esteban') opt.selected = true;
+                    voiceSelect.appendChild(opt);
+                });
+            } catch (e) { console.error("Error cargando voces:", e); }
         }
 
         async function loadProjects() {
-            const res = await fetch('/api/projects');
-            const projects = await res.json();
-            projectList.innerHTML = '';
-            projects.forEach(p => {
-                const percent = Math.round((p.completed_chunks / p.total_chunks) * 100);
-                const status = p.is_finished ? 'Finalizado' : 'En proceso';
-                const badgeClass = p.is_finished ? 'badge-finished' : 'badge-processing';
+            try {
+                const res = await fetch('/api/projects');
+                const projects = await res.json();
 
-                const card = document.createElement('div');
-                card.className = 'project-card';
-                card.innerHTML = `
-                    <div class="project-info">
-                        <strong>${p.name}</strong>
-                        <span class="badge ${badgeClass}">${status}</span>
-                    </div>
-                    <div class="project-info">
-                        <small>${p.completed_chunks} / ${p.total_chunks} fragmentos</small>
-                        <small>${percent}%</small>
-                    </div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" style="width: ${percent}%"></div>
-                    </div>
-                    ${p.is_finished ?
-                        `<a href="/api/download/${p.id}" class="download-link">Descargar WAV completo</a>` :
-                        `<button class="btn-small" onclick="process('${p.id}')" id="btn-${p.id}">Continuar Procesando</button>`
+                // Mapear proyectos para no reconstruir todo el DOM innecesariamente si es posible,
+                // Pero para simplicidad de estado, limpiaremos y reconstruiremos.
+                projectList.innerHTML = '';
+
+                // Ordenar por ID (tiempo) descendente
+                projects.sort((a, b) => b.id.localeCompare(a.id));
+
+                projects.forEach(p => {
+                    const percent = Math.round((p.completed_chunks / p.total_chunks) * 100);
+                    const isFinished = p.is_finished;
+                    const isActive = activeProjectId === p.id;
+
+                    let statusText = isFinished ? 'Finalizado' : 'Pendiente';
+                    let badgeClass = isFinished ? 'badge-finished' : 'badge-pending';
+
+                    if (isActive) {
+                        statusText = 'Procesando...';
+                        badgeClass = 'badge-processing';
+                    } else if (!isFinished && p.completed_chunks > 0) {
+                        statusText = 'Pausado';
+                        badgeClass = 'badge-paused';
                     }
-                `;
-                projectList.appendChild(card);
-            });
+
+                    const card = document.createElement('div');
+                    card.className = `project-card \${isActive ? 'active' : ''}`;
+
+                    // Lógica del botón
+                    let actionHtml = '';
+                    if (isFinished) {
+                        actionHtml = `<a href="/api/download/\${p.id}" class="download-link">Descargar WAV completo</a>`;
+                    } else if (isActive) {
+                        actionHtml = `<button class="btn-small btn-stop" onclick="stopProcess()">Detener Procesamiento</button>`;
+                    } else {
+                        const isDisabled = activeProjectId !== null;
+                        actionHtml = `<button class="btn-small" onclick="startProcess('\${p.id}')" \${isDisabled ? 'disabled' : ''}>Continuar Procesando</button>`;
+                    }
+
+                    card.innerHTML = `
+                        <div class="project-info">
+                            <strong>\${p.name}</strong>
+                            <span class="badge \${badgeClass}">\${statusText}</span>
+                        </div>
+                        <div class="project-info">
+                            <small>\${p.completed_chunks} / \${p.total_chunks} fragmentos</small>
+                            <small>\${percent}%</small>
+                        </div>
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: \${percent}%"></div>
+                        </div>
+                        \${actionHtml}
+                    `;
+                    projectList.appendChild(card);
+                });
+            } catch (e) { console.error("Error cargando proyectos:", e); }
         }
 
-        async function process(pid) {
-            const btn = document.getElementById(`btn-${pid}`);
-            if (btn) btn.disabled = true;
+        async function startProcess(pid) {
+            if (activeProjectId !== null) return;
+            activeProjectId = pid;
+            loadProjects(); // Actualizar UI inmediatamente
+            runProcessLoop(pid);
+        }
+
+        function stopProcess() {
+            activeProjectId = null;
+            loadProjects();
+        }
+
+        async function runProcessLoop(pid) {
+            if (activeProjectId !== pid) return;
 
             try {
-                const res = await fetch(`/api/process/${pid}`, { method: 'POST' });
+                const res = await fetch(\`/api/process/\${pid}\`, { method: 'POST' });
                 const data = await res.json();
-                if (data.status === 'processing' || data.status === 'chunk_done') {
-                    loadProjects();
-                    // Seguir procesando automáticamente
-                    setTimeout(() => process(pid), 500);
+                
+                if (data.status === 'chunk_done') {
+                    // Si el usuario no ha cancelado mientras se procesaba el chunk
+                    if (activeProjectId === pid) {
+                        loadProjects();
+                        setTimeout(() => runProcessLoop(pid), 300);
+                    }
                 } else if (data.status === 'finished') {
+                    activeProjectId = null;
+                    loadProjects();
+                    alert('¡Procesamiento completado!');
+                } else if (data.error) {
+                    alert('Error: ' + data.error);
+                    activeProjectId = null;
                     loadProjects();
                 }
             } catch (e) {
                 console.error(e);
-                if (btn) btn.disabled = false;
+                activeProjectId = null;
+                loadProjects();
             }
         }
 
         createBtn.onclick = async () => {
             if (!fileInput.files[0]) return alert('Selecciona un archivo');
+            if (activeProjectId !== null) return alert('Espera a que termine el proceso actual o deténlo.');
 
             createBtn.disabled = true;
             const formData = new FormData();
@@ -288,22 +380,29 @@
             formData.append('voice', voiceSelect.value);
             formData.append('speed', speedInput.value);
 
-            const res = await fetch('/api/create', {
-                method: 'POST',
-                body: formData
-            });
-            const data = await res.json();
-            createBtn.disabled = false;
+            try {
+                const res = await fetch('/api/create', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await res.json();
+                createBtn.disabled = false;
 
-            if (data.project_id) {
-                loadProjects();
-                process(data.project_id);
+                if (data.project_id) {
+                    startProcess(data.project_id);
+                }
+            } catch (e) {
+                alert("Error al crear proyecto: " + e);
+                createBtn.disabled = false;
             }
         };
 
         loadVoices();
         loadProjects();
-        setInterval(loadProjects, 5000); // Polling opcional
+        // Polling para mantener sincronizado el estado si se cambia algo externamente
+        setInterval(() => {
+            if (activeProjectId === null) loadProjects();
+        }, 5000);
     </script>
 </body>
 
