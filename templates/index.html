@@ -273,11 +273,8 @@
                 const res = await fetch('/api/projects');
                 const projects = await res.json();
 
-                // Mapear proyectos para no reconstruir todo el DOM innecesariamente si es posible,
-                // Pero para simplicidad de estado, limpiaremos y reconstruiremos.
                 projectList.innerHTML = '';
 
-                // Ordenar por ID (tiempo) descendente
                 projects.sort((a, b) => b.id.localeCompare(a.id));
 
                 projects.forEach(p => {
@@ -297,32 +294,31 @@
                     }
 
                     const card = document.createElement('div');
-                    card.className = `project-card \${isActive ? 'active' : ''}`;
+                    card.className = `project-card ${isActive ? 'active' : ''}`;
 
-                    // Lógica del botón
                     let actionHtml = '';
                     if (isFinished) {
-                        actionHtml = `<a href="/api/download/\${p.id}" class="download-link">Descargar WAV completo</a>`;
+                        actionHtml = `<a href="/api/download/${p.id}" class="download-link">Descargar WAV completo</a>`;
                     } else if (isActive) {
                         actionHtml = `<button class="btn-small btn-stop" onclick="stopProcess()">Detener Procesamiento</button>`;
                     } else {
                         const isDisabled = activeProjectId !== null;
-                        actionHtml = `<button class="btn-small" onclick="startProcess('\${p.id}')" \${isDisabled ? 'disabled' : ''}>Continuar Procesando</button>`;
+                        actionHtml = `<button class="btn-small" onclick="startProcess('${p.id}')" ${isDisabled ? 'disabled' : ''}>Continuar Procesando</button>`;
                     }
 
                     card.innerHTML = `
                         <div class="project-info">
-                            <strong>\${p.name}</strong>
-                            <span class="badge \${badgeClass}">\${statusText}</span>
+                            <strong>${p.name}</strong>
+                            <span class="badge ${badgeClass}">${statusText}</span>
                         </div>
                         <div class="project-info">
-                            <small>\${p.completed_chunks} / \${p.total_chunks} fragmentos</small>
-                            <small>\${percent}%</small>
+                            <small>${p.completed_chunks} / ${p.total_chunks} fragmentos</small>
+                            <small>${percent}%</small>
                         </div>
                         <div class="progress-bar">
-                            <div class="progress-fill" style="width: \${percent}%"></div>
+                            <div class="progress-fill" style="width: ${percent}%"></div>
                         </div>
-                        \${actionHtml}
+                        ${actionHtml}
                     `;
                     projectList.appendChild(card);
                 });
@@ -332,7 +328,7 @@
         async function startProcess(pid) {
             if (activeProjectId !== null) return;
             activeProjectId = pid;
-            loadProjects(); // Actualizar UI inmediatamente
+            loadProjects();
             runProcessLoop(pid);
         }
 
@@ -345,11 +341,10 @@
             if (activeProjectId !== pid) return;
 
             try {
-                const res = await fetch(\`/api/process/\${pid}\`, { method: 'POST' });
+                const res = await fetch(`/api/process/${pid}`, { method: 'POST' });
                 const data = await res.json();
-                
+
                 if (data.status === 'chunk_done') {
-                    // Si el usuario no ha cancelado mientras se procesaba el chunk
                     if (activeProjectId === pid) {
                         loadProjects();
                         setTimeout(() => runProcessLoop(pid), 300);
@@ -399,7 +394,6 @@
 
         loadVoices();
         loadProjects();
-        // Polling para mantener sincronizado el estado si se cambia algo externamente
         setInterval(() => {
             if (activeProjectId === null) loadProjects();
         }, 5000);
