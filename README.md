@@ -8,6 +8,7 @@ Una aplicación de Texto-a-Voz (TTS) en local diseñada para procesar documentos
 - **Ensamblado Automático**: Una vez completados todos los fragmentos, la aplicación los une automáticamente en un único archivo WAV de alta calidad.
 - **Basado en Kokoro-82M**: Utiliza el modelo Kokoro ONNX para una síntesis de voz natural y rápida.
 - **Compatible con Python 3.13**: Implementación moderna que evita dependencias obsoletas (como `audioop`).
+- **Interfaz Dinámica**: Control de estados "Continuar" / "Detener" en tiempo real y badges de estado visuales.
 
 ## 🛠️ Requisitos
 - Python 3.9 o superior (Probado en 3.13)
