@@ -1,0 +1,9 @@
+flask
+kokoro-onnx
+onnxruntime
+soundfile
+numpy
+fitz
+pymupdf
+python-docx
+werkzeug

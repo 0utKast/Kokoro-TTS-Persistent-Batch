@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TTS Local - Modo Batch</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card-bg: #1e293b;
+            --primary: #38bdf8;
+            --secondary: #818cf8;
+            --text: #f1f5f9;
+            --text-dim: #94a3b8;
+            --accent: #f472b6;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 800px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .card {
+            background-color: var(--card-bg);
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: var(--text-dim);
+            font-weight: 600;
+        }
+
+        input[type="file"],
+        select,
+        input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            border-radius: 10px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: #0f172a;
+            color: white;
+            box-sizing: border-box;
+        }
+
+        button {
+            background: linear-gradient(to right, var(--primary), var(--secondary));
+            border: none;
+            padding: 12px 24px;
+            border-radius: 10px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, opacity 0.2s;
+            width: 100%;
+            font-size: 1.1rem;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            opacity: 0.9;
+        }
+
+        button:disabled {
+            background: #475569;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .project-list {
+            display: grid;
+            gap: 20px;
+        }
+
+        .project-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            padding: 20px;
+            border-radius: 15px;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .progress-bar {
+            height: 8px;
+            background: #334155;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(to right, var(--primary), var(--accent));
+            width: 0%;
+            transition: width 0.3s;
+        }
+
+        .project-info {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .badge {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 700;
+            text-transform: uppercase;
+        }
+
+        .badge-pending {
+            background: #64748b;
+        }
+
+        .badge-processing {
+            background: var(--primary);
+        }
+
+        .badge-finished {
+            background: #10b981;
+        }
+
+        .btn-small {
+            width: auto;
+            padding: 8px 16px;
+            font-size: 0.9rem;
+        }
+
+        .download-link {
+            color: var(--primary);
+            text-decoration: none;
+            font-weight: 600;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>TTS Local Batch</h1>
+            <p style="color: var(--text-dim)">Convierte libros completos con persistencia automática</p>
+        </header>
+
+        <section class="card">
+            <h2>Nuevo Proyecto</h2>
+            <div class="form-group">
+                <label>Archivo (PDF, DOCX, TXT)</label>
+                <input type="file" id="fileInput" accept=".pdf,.docx,.txt">
+            </div>
+            <div class="form-group">
+                <label>Voz</label>
+                <select id="voiceSelect"></select>
+            </div>
+            <div class="form-group">
+                <label>Velocidad</label>
+                <input type="range" id="speedInput" min="0.5" max="2.0" step="0.1" value="1.0">
+                <span id="speedValue">1.0</span>
+            </div>
+            <button id="createBtn">Crear y Empezar</button>
+        </section>
+
+        <section class="card">
+            <h2>Proyectos Actuales</h2>
+            <div id="projectList" class="project-list">
+                <!-- Proyectos aparecerán aquí -->
+            </div>
+        </section>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('fileInput');
+        const voiceSelect = document.getElementById('voiceSelect');
+        const speedInput = document.getElementById('speedInput');
+        const speedValue = document.getElementById('speedValue');
+        const createBtn = document.getElementById('createBtn');
+        const projectList = document.getElementById('projectList');
+
+        speedInput.oninput = () => speedValue.textContent = speedInput.value;
+
+        // Cargar voces
+        async function loadVoices() {
+            const res = await fetch('/api/voices');
+            const voices = await res.json();
+            voices.forEach(v => {
+                const opt = document.createElement('option');
+                opt.value = v.id;
+                opt.textContent = `${v.group} - ${v.label}`;
+                if (v.id === 'es_esteban') opt.selected = true;
+                voiceSelect.appendChild(opt);
+            });
+        }
+
+        async function loadProjects() {
+            const res = await fetch('/api/projects');
+            const projects = await res.json();
+            projectList.innerHTML = '';
+            projects.forEach(p => {
+                const percent = Math.round((p.completed_chunks / p.total_chunks) * 100);
+                const status = p.is_finished ? 'Finalizado' : 'En proceso';
+                const badgeClass = p.is_finished ? 'badge-finished' : 'badge-processing';
+
+                const card = document.createElement('div');
+                card.className = 'project-card';
+                card.innerHTML = `
+                    <div class="project-info">
+                        <strong>${p.name}</strong>
+                        <span class="badge ${badgeClass}">${status}</span>
+                    </div>
+                    <div class="project-info">
+                        <small>${p.completed_chunks} / ${p.total_chunks} fragmentos</small>
+                        <small>${percent}%</small>
+                    </div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${percent}%"></div>
+                    </div>
+                    ${p.is_finished ?
+                        `<a href="/api/download/${p.id}" class="download-link">Descargar WAV completo</a>` :
+                        `<button class="btn-small" onclick="process('${p.id}')" id="btn-${p.id}">Continuar Procesando</button>`
+                    }
+                `;
+                projectList.appendChild(card);
+            });
+        }
+
+        async function process(pid) {
+            const btn = document.getElementById(`btn-${pid}`);
+            if (btn) btn.disabled = true;
+
+            try {
+                const res = await fetch(`/api/process/${pid}`, { method: 'POST' });
+                const data = await res.json();
+                if (data.status === 'processing' || data.status === 'chunk_done') {
+                    loadProjects();
+                    // Seguir procesando automáticamente
+                    setTimeout(() => process(pid), 500);
+                } else if (data.status === 'finished') {
+                    loadProjects();
+                }
+            } catch (e) {
+                console.error(e);
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        createBtn.onclick = async () => {
+            if (!fileInput.files[0]) return alert('Selecciona un archivo');
+
+            createBtn.disabled = true;
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+            formData.append('voice', voiceSelect.value);
+            formData.append('speed', speedInput.value);
+
+            const res = await fetch('/api/create', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            createBtn.disabled = false;
+
+            if (data.project_id) {
+                loadProjects();
+                process(data.project_id);
+            }
+        };
+
+        loadVoices();
+        loadProjects();
+        setInterval(loadProjects, 5000); // Polling opcional
+    </script>
+</body>
+
+</html>
